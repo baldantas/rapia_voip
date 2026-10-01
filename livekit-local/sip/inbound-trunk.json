@@ -1,0 +1,11 @@
+{
+  "trunk": {
+    "name": "Asterisk SBC - entrada (local)",
+    "numbers": [
+      "+558431901994"
+    ],
+    "allowed_addresses": [
+      "172.30.0.10/32"
+    ]
+  }
+}

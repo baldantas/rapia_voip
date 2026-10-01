@@ -1,0 +1,157 @@
+; Gerado por scripts/render-config.sh - edite o template, não este arquivo.
+[general]
+static=yes
+writeprotect=no
+
+[globals]
+DID=${SIP_DID}
+OUT_PREFIX=${SIP_OUT_PREFIX}
+TIMEOUT_ENTRADA=60
+TIMEOUT_SAIDA=60
+; M2.5: números fictícios (nunca discados de fora, só existem entre o Asterisk e o LiveKit SIP,
+; no loopback) que fazem o LiveKit escolher um trunk/dispatch-rule SEM agente -
+; mesmo mecanismo de "o LiveKit casa o trunk pelo número chamado" que o DID
+; real já usa acima, só que apontando pra um trunk sem room_config.agents.
+; Validado com ligação sintética em 23/09/2026 (spike descartável, não
+; commitado). Provisionados/garantidos por
+; voip/voice-agent/scripts/dispatch.py::garante_trunks_ura() - roda toda vez
+; que o iniciar.ps1 sobe o ambiente. Fila específica x fila padrão hoje caem
+; na mesma fila única do Painel 360 (M2: voice_queue_entries.queue_id sempre
+; null) - a distinção fica só no nome da sala, pro histórico/relatório;
+; sem efeito funcional ainda no board.
+URA_FILA_DIRETA=9990101
+URA_FILA_PADRAO=9990102
+; M2.5 (24/09/2026): dígito -> destino agora é CONSULTADO em tempo real no
+; RAPIA (GET /voice/ura/runtime, ver VoiceUraRuntimeController), não mais
+; hardcoded. Mesmo token que o worker Python usa (VOICE_WORKER_TOKEN em
+; sys_parametros) - reaproveitado de propósito, ambos são chamadores de
+; infra confiáveis. Se o token rotacionar, atualizar aqui também (não há
+; sincronização automática ainda).
+URA_API_TOKEN=${URA_API_TOKEN}
+; 1 = entrada passa pela URA; qualquer outro valor = direto pra IA (padrão 0,
+; ver comentário em [from-provedor]). Vem do .env (URA_ATIVA).
+URA_ATIVA=${URA_ATIVA}
+
+; =============================================================================
+; Entrada: provedor -> URA -> LiveKit SIP
+; A URA decide ANTES de discar pro LiveKit: dígito -> agente de IA (sala
+; call-*, com agente) ou fila humana direta (sala fila-*, sem agente) -
+; decisão vem do RAPIA (voice_trunks/voice_ura_options), consultada via
+; CURL() com timeout curto; sem resposta/opção inválida/API fora do ar ->
+; fila padrão do tronco (sala filapadrao-*, sem agente) - MESMO fallback do
+; timeout, nunca trava a ligação esperando a API. "Quem entra na sala"
+; continua 100% decisão do Asterisk, nunca da IA nem do LiveKit.
+; =============================================================================
+; 24/09/2026 - URA PAUSADA por padrão (URA_ATIVA=0 no .env): em ligação real
+; do provedor, quando o próprio Asterisk atende (Answer/Background), o relay de
+; mídia do provedor não envia áudio - fica mudo. Quando quem atende é a ponte
+; do Dial() com o LiveKit (entrada direto pra IA), funciona. Investigação
+; completa (10 ligações reais, tcpdump + pktmon) e próximo passo (teste na EC2)
+; no TODO, fim do bloco M2.5. Com URA_ATIVA=0 a entrada vai direto pra IA;
+; com URA_ATIVA=1 passa pela URA abaixo (tudo pronto, só bloqueado pela mídia).
+[from-provedor]
+exten => _[0-9+].,1,NoOp(ENTRADA de ${CALLERID(num)} para ${EXTEN} -> URA_ATIVA=${URA_ATIVA})
+ same => n,Set(CALLERID(num)=${FILTER(0-9+,${CALLERID(num)})})
+ ; Filtro de números permitidos (25/09/2026), ANTES de atender: o RAPIA responde
+ ; "allow"/"deny" (parâmetros VOICE_FILTRO_ENTRADA e VOICE_NUMEROS_PERMITIDOS).
+ ; Qualquer coisa que não seja "allow" - inclusive API fora do ar - recusa.
+ same => n,Set(CURLOPT(conntimeout)=${URA_CURL_CONNTIMEOUT})
+ same => n,Set(CURLOPT(httptimeout)=${URA_CURL_HTTPTIMEOUT})
+ same => n,Set(CURLOPT(httpheader)=x-api-key: ${URA_API_TOKEN})
+ same => n,Set(PERMITIDO=${CURL(${RAPIA_BASE_URL}/voice/ura/caller-allowed?from=${CALLERID(num)})})
+ same => n,GotoIf($["${PERMITIDO}" != "allow"]?recusada,1)
+ same => n,GotoIf($["${URA_ATIVA}" != "1"]?ura-menu,ia,1)
+ same => n,Goto(ura-menu,s,1)
+
+exten => recusada,1,NoOp(RECUSADA: ${CALLERID(num)} fora da lista de números permitidos (resposta "${PERMITIDO}"))
+ ; 17 = ocupado (486 Busy Here): resposta final, o chamador ouve ocupado na hora.
+ ; Com 21 (403 Forbidden) o provedor reenviava o INVITE várias vezes e o
+ ; chamador ficava mudo até ele desistir (ligações reais de 25/09/2026).
+ same => n,Hangup(17)
+
+; Menu em contexto próprio (25/09/2026): no [from-provedor] o padrão do DID
+; (_[0-9+].) também casa "1" seguido de mais dígitos, e o Asterisk esperava o
+; TIMEOUT(digit) (4 s, medido no tcpdump da EC2) antes de agir. Aqui só existem
+; extensões de 1 dígito, então a opção é tratada assim que o DTMF chega.
+[ura-menu]
+exten => s,1,Answer()
+ ; M5.1: avisa o RAPIA que há um paciente no menu (Painel 360 mostra "Na URA"). Resposta ignorada:
+ ; API fora do ar não pode atrasar nem derrubar a ligação (mesmos timeouts curtos do CURL da URA).
+ same => n,Set(CURLOPT(conntimeout)=${URA_CURL_CONNTIMEOUT})
+ same => n,Set(CURLOPT(httptimeout)=${URA_CURL_HTTPTIMEOUT})
+ same => n,Set(CURLOPT(httpheader)=x-api-key: ${URA_API_TOKEN})
+ same => n,Set(URA_AVISO=${CURL(${RAPIA_BASE_URL}/voice/ura/entrada?uid=${UNIQUEID}&from=${URIENCODE(${CALLERID(num)})}&did=${URIENCODE(${DID})})})
+ same => n,Wait(1)
+ same => n,Set(TIMEOUT(digit)=4)
+ same => n,Set(TIMEOUT(response)=8)
+ same => n,Background(custom/ura-boas-vindas)
+ same => n,WaitExten()
+
+exten => _[0-9],1,NoOp(URA: consultando destino do dígito ${EXTEN} pro tronco ${DID})
+ same => n,Set(CURLOPT(conntimeout)=${URA_CURL_CONNTIMEOUT})
+ same => n,Set(CURLOPT(httptimeout)=${URA_CURL_HTTPTIMEOUT})
+ same => n,Set(CURLOPT(httpheader)=x-api-key: ${URA_API_TOKEN})
+ same => n,Set(DESTINO=${CURL(${RAPIA_BASE_URL}/voice/ura/runtime?did=%2B${FILTER(0-9,${DID})}&digit=${EXTEN})})
+ same => n,NoOp(URA: destino resolvido para o dígito ${EXTEN} = "${DESTINO}")
+ same => n,GotoIf($["${DESTINO}" = "agent"]?ia,1)
+ same => n,GotoIf($["${DESTINO}" = "queue"]?filadireta,1)
+ same => n,Goto(t,1)
+
+; M5.1: o paciente desligou. Se ainda estava no menu (sem sala), o RAPIA marca abandonada; se já foi
+; para a IA/fila a linha já foi adotada pela sala e a chamada é ignorada.
+exten => h,1,NoOp(URA: fim da chamada ${UNIQUEID})
+ same => n,Set(CURLOPT(conntimeout)=${URA_CURL_CONNTIMEOUT})
+ same => n,Set(CURLOPT(httptimeout)=${URA_CURL_HTTPTIMEOUT})
+ same => n,Set(CURLOPT(httpheader)=x-api-key: ${URA_API_TOKEN})
+ same => n,Set(URA_AVISO=${CURL(${RAPIA_BASE_URL}/voice/ura/saida?uid=${UNIQUEID})})
+
+exten => ia,1,NoOp(URA: assistente de IA -> LiveKit como ${DID})
+ same => n,Dial(PJSIP/${DID}@livekit,${TIMEOUT_ENTRADA})
+ same => n,NoOp(Resultado: ${DIALSTATUS})
+ same => n,Hangup()
+
+exten => filadireta,1,NoOp(URA: fila humana direta, sem IA)
+ same => n,Dial(PJSIP/${URA_FILA_DIRETA}@livekit,${TIMEOUT_ENTRADA})
+ same => n,NoOp(Resultado: ${DIALSTATUS})
+ same => n,Hangup()
+
+; opção digitada que não bate com nenhuma extensão acima: mesmo destino do
+; timeout, não repete o menu (decisão simples pro V1; refinar se o cliente
+; pedir "digite novamente" na apresentação)
+exten => i,1,Goto(t,1)
+
+exten => t,1,NoOp(URA: sem opção válida / API indisponível -> fila padrão do tronco)
+ same => n,Dial(PJSIP/${URA_FILA_PADRAO}@livekit,${TIMEOUT_ENTRADA})
+ same => n,NoOp(Resultado: ${DIALSTATUS})
+ same => n,Hangup()
+
+; =============================================================================
+; Ramais (M2.5): ligação interna entre colegas. O ramal de origem já chega
+; aqui autenticado (endpoint gerado por render-ramais.ps1, context=ramais).
+; Disca pro LiveKit num trunk catch-all (sem "numbers", só allowed_addresses),
+; SEM agente - o número discado (o ramal-alvo) chega ao webhook do RAPIA como
+; atributo sip.trunkPhoneNumber do participante SIP, não no nome da sala (o
+; nome da sala usa o número de QUEM LIGOU, não o discado - confirmado com
+; ligação sintética em 23/09/2026: dispatchRuleIndividual embute o CALLER no
+; nome, então não dá pra usar "ext-{tenant}_{ramal}_{aleatorio}" como o TODO
+; sugeria; backend precisa ler sip.trunkPhoneNumber, não regex na sala).
+; =============================================================================
+[ramais]
+exten => _XXXX,1,NoOp(Ramal ${CALLERID(num)} chamando ramal ${EXTEN})
+ same => n,Dial(PJSIP/${EXTEN}@livekit,${TIMEOUT_ENTRADA})
+ same => n,NoOp(Resultado: ${DIALSTATUS})
+ same => n,Hangup()
+
+; =============================================================================
+; Saída: LiveKit SIP (callback) -> provedor
+; O LiveKit disca em E.164 (+55...). Aqui o número é normalizado conforme o
+; que o provedor aceita (SIP_OUT_PREFIX no .env).
+; =============================================================================
+[from-livekit]
+exten => _[+0-9].,1,NoOp(SAIDA para ${EXTEN} via provedor)
+ same => n,Set(NUM=${FILTER(0-9,${EXTEN})})
+ same => n,Set(DEST=${OUT_PREFIX}${NUM})
+ same => n,Set(CALLERID(num)=${FILTER(0-9,${DID})})
+ same => n,Dial(PJSIP/${DEST}@provedor,${TIMEOUT_SAIDA})
+ same => n,NoOp(Resultado: ${DIALSTATUS})
+ same => n,Hangup()

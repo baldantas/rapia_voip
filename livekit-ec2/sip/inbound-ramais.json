@@ -1,0 +1,8 @@
+{
+  "trunk": {
+    "name": "Ramais internos - sala pessoal (catch-all)",
+    "allowed_addresses": [
+      "127.0.0.1/32"
+    ]
+  }
+}

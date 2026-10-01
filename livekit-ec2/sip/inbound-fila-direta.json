@@ -1,0 +1,11 @@
+{
+  "trunk": {
+    "name": "URA - fila direta (opção 2, sem IA)",
+    "numbers": [
+      "9990101"
+    ],
+    "allowed_addresses": [
+      "127.0.0.1/32"
+    ]
+  }
+}

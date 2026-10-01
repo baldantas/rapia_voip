@@ -1,0 +1,10 @@
+{
+  "trunk": {
+    "name": "Asterisk SBC - saida (EC2)",
+    "address": "127.0.0.1:5060",
+    "transport": "SIP_TRANSPORT_UDP",
+    "numbers": [
+      "+558431901994"
+    ]
+  }
+}

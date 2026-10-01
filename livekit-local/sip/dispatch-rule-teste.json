@@ -1,0 +1,13 @@
+{
+  "dispatch_rule": {
+    "name": "Teste - toda chamada cai na sala teste-sip",
+    "trunk_ids": [
+      "ST_SRv7Wh4TJtxR"
+    ],
+    "rule": {
+      "dispatchRuleDirect": {
+        "roomName": "teste-sip"
+      }
+    }
+  }
+}

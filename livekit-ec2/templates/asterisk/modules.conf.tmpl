@@ -1,0 +1,28 @@
+; Gerado por scripts/render-config.sh - edite o template, não este arquivo.
+; A imagem traz muitos módulos opcionais que só poluem o log (áudio local,
+; bancos de dados, HEP). Aqui ficam de fora; o núcleo PJSIP continua completo.
+[modules]
+autoload=yes
+
+; áudio local (não existe placa de som no container)
+noload => chan_alsa.so
+noload => chan_console.so
+noload => res_timing_pthread.so
+
+; bancos / diretórios não usados
+noload => res_config_ldap.so
+noload => res_config_pgsql.so
+noload => cdr_pgsql.so
+noload => cdr_custom.so
+noload => cdr_sqlite3_custom.so
+noload => cel_custom.so
+noload => cel_sqlite3_custom.so
+
+; captura HEP e protocolos não usados
+noload => res_hep.so
+noload => res_hep_pjsip.so
+noload => res_hep_rtcp.so
+noload => chan_iax2.so
+
+; codecs/formatos com dependências ausentes na imagem
+noload => format_ogg_vorbis.so

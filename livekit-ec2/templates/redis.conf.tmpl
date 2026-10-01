@@ -1,0 +1,8 @@
+# Gerado por scripts/render-config.sh - edite o template, não este arquivo.
+bind 127.0.0.1 ::1
+protected-mode yes
+port 6379
+requirepass ${REDIS_PASSWORD}
+timeout 0
+tcp-keepalive 300
+appendonly yes

@@ -1,0 +1,13 @@
+{
+  "dispatch_rule": {
+    "name": "Ramais internos - sala pessoal (catch-all)",
+    "trunk_ids": [
+      "__TRUNK_ID__"
+    ],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "ext-api"
+      }
+    }
+  }
+}

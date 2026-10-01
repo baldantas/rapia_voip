@@ -1,0 +1,108 @@
+; Gerado por scripts/render-config.sh - edite o template, não este arquivo.
+; Asterisk como SBC: registra na conta SIP do provedor (login+senha) e
+; entrega/recebe chamadas do LiveKit SIP (127.0.0.1:5080) por IP.
+; EC2 com network_mode: host - sem NAT do Docker; o único NAT é o do Elastic IP.
+
+[global]
+type=global
+user_agent=RAPIA-SBC
+endpoint_identifier_order=ip,username,anonymous
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:${SIP_PORT}
+; Elastic IP anunciado no Contact/Via e no SDP (a instância só enxerga o IP privado)
+external_media_address=${PUBLIC_IP}
+external_signaling_address=${PUBLIC_IP}
+; loopback (LiveKit SIP) e VPC não recebem o IP externo
+local_net=127.0.0.0/8
+local_net=${VPC_CIDR}
+
+; =============================================================================
+; PROVEDOR - conta SIP com usuário e senha
+; =============================================================================
+[provedor-auth]
+type=auth
+auth_type=userpass
+username=${SIP_AUTH_USERNAME}
+password=${SIP_PASSWORD}
+
+[provedor]
+type=registration
+transport=transport-udp
+outbound_auth=provedor-auth
+server_uri=sip:${SIP_PROVIDER_HOST}:${SIP_PROVIDER_PORT}
+client_uri=sip:${SIP_USERNAME}@${SIP_PROVIDER_HOST}
+contact_user=${SIP_USERNAME}
+expiration=${SIP_REG_EXPIRY}
+retry_interval=30
+forbidden_retry_interval=300
+fatal_retry_interval=120
+; "line" marca as chamadas que chegam por este registro, mesmo que o provedor
+; use um IP diferente do servidor de registro
+line=yes
+endpoint=provedor
+
+[provedor]
+type=aor
+contact=sip:${SIP_PROVIDER_HOST}:${SIP_PROVIDER_PORT}
+qualify_frequency=60
+
+[provedor]
+type=endpoint
+transport=transport-udp
+context=from-provedor
+aors=provedor
+outbound_auth=provedor-auth
+disallow=all
+allow=alaw,ulaw
+from_user=${SIP_USERNAME}
+from_domain=${SIP_PROVIDER_HOST}
+dtmf_mode=rfc4733
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+trust_id_outbound=yes
+send_rpid=yes
+language=pt_BR
+
+; Servidor de registro + IPs de onde o provedor envia INVITEs (SIP_PROVIDER_IN_IPS)
+[provedor]
+type=identify
+endpoint=provedor
+match=${SIP_PROVIDER_HOST}
+${PROVIDER_MATCH_LINES}
+
+; =============================================================================
+; LIVEKIT SIP - vizinho de confiança no loopback, sem autenticação
+; =============================================================================
+[livekit]
+type=aor
+contact=sip:127.0.0.1:${LIVEKIT_SIP_PORT}
+qualify_frequency=30
+
+[livekit]
+type=endpoint
+transport=transport-udp
+context=from-livekit
+aors=livekit
+disallow=all
+allow=alaw,ulaw
+dtmf_mode=rfc4733
+direct_media=no
+rtp_symmetric=yes
+trust_id_inbound=yes
+
+[livekit]
+type=identify
+endpoint=livekit
+match=127.0.0.1
+
+; =============================================================================
+; RAMAIS (M2.5) - endpoints SIP internos. Na EC2 o arquivo começa vazio (o
+; render-config.sh cria se não existir); ramais pela EC2 ainda não estão no
+; escopo (o Laravel gera este arquivo no disco local e recarrega via AMI).
+; =============================================================================
+#include pjsip_ramais.conf

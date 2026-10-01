@@ -1,0 +1,11 @@
+{
+  "trunk": {
+    "name": "URA - fila padrão (timeout, sem IA)",
+    "numbers": [
+      "9990102"
+    ],
+    "allowed_addresses": [
+      "127.0.0.1/32"
+    ]
+  }
+}

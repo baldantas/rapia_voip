@@ -1,0 +1,7 @@
+{
+  "_comentario": "Fonte temporária dos ramais SIP locais, no mesmo espírito de sip/inbound-trunk.json - decisão M2.5 (23/09/2026) de ir por template+reload em vez de Realtime PJSIP (ver TODO seção 7, bloco M2.5). Renderizado por scripts/render-ramais.ps1 em config/asterisk/pjsip_ramais.conf. Quando o backend tiver voice_extensions de verdade, este arquivo (ou o próprio script) passa a ser gerado a partir do banco em vez de editado à mão.",
+  "ramais": [
+    { "ramal": "1001", "senha": "Cb4lIcNOX-A_QA9M", "descricao": "Ramal de teste 1 (M2.5)" },
+    { "ramal": "1002", "senha": "n-g2g7PUFmDvfYvt", "descricao": "Ramal de teste 2 (M2.5)" }
+  ]
+}

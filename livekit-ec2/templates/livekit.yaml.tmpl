@@ -1,0 +1,28 @@
+# Gerado por scripts/render-config.sh - edite o template, não este arquivo.
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  # Mux: todo o WebRTC em uma única porta UDP (uma regra só no Security Group)
+  udp_port: 7882
+  # Homologação: navegador e worker ficam no PC do usuário e chegam pela
+  # OpenVPN (UDP), então NODE_IP é o IP privado da instância. O LiveKit SIP
+  # (mesmo host) também usa esse IP. Sem STUN, sem TURN.
+  use_external_ip: false
+  node_ip: ${NODE_IP}
+
+redis:
+  address: 127.0.0.1:6379
+  password: ${REDIS_PASSWORD}
+
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+room:
+  empty_timeout: 60
+  departure_timeout: 20
+
+${WEBHOOK_BLOCK}
+
+logging:
+  level: ${LOG_LEVEL}

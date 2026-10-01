@@ -1,0 +1,18 @@
+; Gerado por scripts/render-config.sh - edite o template, não este arquivo.
+; AMI (Asterisk Manager Interface) - M2.5: é como o Laravel manda o Asterisk
+; recarregar a config de ramais (pjsip reload) sem reiniciar o container.
+; EC2 (network_mode: host): escuta SÓ em 127.0.0.1 e aceita só loopback. A
+; porta 5038 não é liberada no Security Group. Ramais pela EC2 ainda não estão
+; no escopo (pendência: AMI pela VPN + sincronizar o pjsip_ramais.conf).
+[general]
+enabled = yes
+port = ${AMI_PORT}
+bindaddr = 127.0.0.1
+displayconnects = no
+
+[${AMI_USER}]
+secret = ${AMI_SECRET}
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = system,call,command,reporting
+write = system,call,command,reload

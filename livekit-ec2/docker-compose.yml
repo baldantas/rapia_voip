@@ -1,0 +1,100 @@
+# =============================================================================
+# RAPIA - Stack de voz na EC2 de HOMOLOGAÇÃO (sa-east-1)
+#
+#   provedor <--REGISTER/INVITE--> asterisk :5060 <--127.0.0.1:5080--> sip
+#   sip <--ws://127.0.0.1:7880--> livekit <--127.0.0.1:6379--> redis
+#
+# Todos em network_mode: host (sem NAT de porta do Docker - o motivo de existir
+# esta EC2, ver TODO bloco M2.5). Expostos no Security Group: 5060 + RTP do
+# Asterisk (só IPs do provedor) e 7880/7881/7882 do LiveKit (só VPN/usuário).
+# O resto escuta só em 127.0.0.1 (redis, AMI) ou não é liberado (5080, RTP do
+# LiveKit SIP).
+#
+# Caddy/TLS e TURN ficam fora da homologação (templates em extras/).
+# Egress (gravação, M5): perfil "gravacao", ligado por COMPOSE_PROFILES=gravacao
+# no .env; config gerada de extras/egress.yaml.tmpl só quando S3_BUCKET está
+# preenchido. Escuta só em loopback (health 127.0.0.1:8082); nada a abrir no SG.
+#
+# Antes de subir:  ./scripts/render-config.sh --gen-keys
+# Subir:           docker compose up -d
+# Derrubar:        docker compose down   (trunks/regras ficam em data/redis)
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server /etc/redis.conf
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/redis.conf:/etc/redis.conf:ro
+      # sem isto, "docker compose down" apagaria os trunks e dispatch rules do LiveKit
+      - ./data/redis:/data
+    logging: *default-logging
+
+  livekit:
+    image: livekit/livekit-server:${LIVEKIT_VERSION:-latest}
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/livekit.yaml:/etc/livekit.yaml:ro
+    depends_on:
+      - redis
+    logging: *default-logging
+
+  sip:
+    image: livekit/sip:${SIP_VERSION:-latest}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/sip.yaml:/sip/config.yaml:ro   # caminho fixo lido pela imagem
+    depends_on:
+      - redis
+      - livekit
+    logging: *default-logging
+
+  # Gravação das chamadas (M5). Somente áudio (audio_only, OGG) -> S3 com a
+  # credencial IAM restrita do .env. Quem pede a gravação é o Laravel
+  # (VoiceRecordingService -> StartRoomCompositeEgress); o fim chega ao Laravel
+  # pelo webhook egress_ended do próprio LiveKit.
+  egress:
+    image: livekit/egress:${EGRESS_VERSION:-latest}
+    profiles: ["gravacao"]
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - SYS_ADMIN   # exigido pela imagem (Chrome/sandbox), mesmo no modo só áudio
+    environment:
+      - EGRESS_CONFIG_FILE=/etc/egress.yaml
+    volumes:
+      - ./config/egress.yaml:/etc/egress.yaml:ro
+    depends_on:
+      - redis
+      - livekit
+    logging: *default-logging
+
+  # SBC: registra na conta SIP do provedor e entrega ao LiveKit SIP (127.0.0.1:5080)
+  asterisk:
+    image: andrius/asterisk:${ASTERISK_VERSION:-latest}
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config/asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./config/asterisk/pjsip_ramais.conf:/etc/asterisk/pjsip_ramais.conf:ro
+      - ./config/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./config/asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - ./config/asterisk/logger.conf:/etc/asterisk/logger.conf:ro
+      - ./config/asterisk/modules.conf:/etc/asterisk/modules.conf:ro
+      - ./config/asterisk/manager.conf:/etc/asterisk/manager.conf:ro
+      # prompts da URA (a imagem não traz sons)
+      - ./sounds:/var/lib/asterisk/sounds/custom:ro
+    depends_on:
+      - sip
+    logging: *default-logging

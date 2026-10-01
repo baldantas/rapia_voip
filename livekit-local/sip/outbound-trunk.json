@@ -1,0 +1,10 @@
+{
+  "trunk": {
+    "name": "Asterisk SBC - saida (local)",
+    "address": "172.30.0.10:5060",
+    "transport": "SIP_TRANSPORT_UDP",
+    "numbers": [
+      "+558431901994"
+    ]
+  }
+}

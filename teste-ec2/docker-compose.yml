@@ -1,0 +1,31 @@
+# Teste diagnóstico do M2.5 na EC2 (sa-east-1) - SÓ o Asterisk, sem LiveKit e
+# sem Laravel. Pergunta que responde: com o Asterisk atendendo e tocando áudio
+# sozinho, SEM a tradução de portas do Docker Desktop, o relay de mídia do
+# provedor (52.67.163.135) envia áudio? Ver README.md.
+#
+# network_mode: host no Linux é rede do host de verdade (portas e IPs
+# preservados) - diferente do Docker Desktop no Windows, onde isso é um proxy.
+version: "2.4"
+
+services:
+  asterisk:
+    security_opt:
+      - seccomp:unconfined  
+    image: andrius/asterisk:${ASTERISK_VERSION:-latest}
+    network_mode: host
+    restart: "no"
+    cpus: "0.5"
+    mem_limit: 256m
+    volumes:
+      - ./config/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./config/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./config/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - ./config/logger.conf:/etc/asterisk/logger.conf:ro
+      - ./config/modules.conf:/etc/asterisk/modules.conf:ro
+      - ./config/manager.conf:/etc/asterisk/manager.conf:ro
+      - ./sounds:/var/lib/asterisk/sounds/custom:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

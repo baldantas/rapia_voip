@@ -1,0 +1,25 @@
+# Segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+backup-env-pre-ec2/
+**/backup-pre-*/
+
+# Ambientes, caches e dados locais
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+*.log
+coletas.jsonl
+livekit-local/data/
+
+# Gravações e dumps (podem conter voz e dados de pacientes)
+*.dump
+*.sql
+
+# Estado de execucao local
+*.pid

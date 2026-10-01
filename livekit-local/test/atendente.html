@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Softphone de teste</title>
+<style>
+  :root { --bg:#f5f7fa; --card:#fff; --tx:#1d2733; --mut:#5b6b7c; --bd:#d6dde6; --pri:#1f4e79; --ok:#2e7d32; --err:#c62828; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12171d; --card:#1b222b; --tx:#e6edf3; --mut:#9aa7b4; --bd:#2c3642; --pri:#5b9bd5; --ok:#66bb6a; --err:#ef5350; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--tx); font:14px/1.45 system-ui, sans-serif; }
+  main { max-width:720px; margin:0 auto; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.sub { margin:0 0 16px; color:var(--mut); }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:16px; margin-bottom:12px; }
+  label { display:block; font-weight:600; margin:8px 0 4px; }
+  input, textarea { width:100%; padding:8px; border:1px solid var(--bd); border-radius:6px; background:var(--bg); color:var(--tx); font:inherit; }
+  textarea { height:70px; font-family:ui-monospace, Consolas, monospace; font-size:12px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+  button { padding:8px 14px; border-radius:6px; border:1px solid var(--pri); background:var(--pri); color:#fff; font:inherit; cursor:pointer; }
+  button.sec { background:transparent; color:var(--pri); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  #status { font-weight:600; }
+  .on { color:var(--ok); } .off { color:var(--mut); } .err { color:var(--err); }
+  ul { margin:6px 0 0; padding-left:18px; }
+  #log { height:180px; overflow:auto; font:12px/1.4 ui-monospace, Consolas, monospace; white-space:pre-wrap; color:var(--mut); }
+  .dtmf { display:grid; grid-template-columns:repeat(3, 48px); gap:6px; margin-top:8px; }
+  .dtmf button { padding:8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Softphone de teste · LiveKit local</h1>
+  <p class="sub">Entra numa sala do LiveKit pelo navegador, como a atendente fará no Painel 360. Abra por <b>http://localhost</b> para o microfone funcionar.</p>
+
+  <div class="card">
+    <label for="url">URL do LiveKit</label>
+    <input id="url" value="ws://localhost:7880">
+    <label for="token">Token (gere com <code>.\scripts\token.ps1 -Room teste-sip</code>)</label>
+    <textarea id="token" placeholder="eyJhbGciOi..."></textarea>
+    <div class="row">
+      <button id="btnConectar">Conectar</button>
+      <button id="btnMute" class="sec" disabled>Mutar microfone</button>
+      <button id="btnSair" class="sec" disabled>Desligar / sair</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div>Status: <span id="status" class="off">desconectado</span></div>
+    <div style="margin-top:8px">Participantes na sala:</div>
+    <ul id="participantes"><li class="off">nenhum</li></ul>
+    <div style="margin-top:10px">DTMF para o chamador SIP:</div>
+    <div class="dtmf" id="dtmf"></div>
+  </div>
+
+  <div class="card"><div id="log"></div></div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+<script>
+  const LK = window.LivekitClient;
+  const $ = (id) => document.getElementById(id);
+  let room = null;
+  let mutado = false;
+
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    $('log').textContent += `[${t}] ${msg}\n`;
+    $('log').scrollTop = $('log').scrollHeight;
+  }
+
+  function setStatus(txt, cls) { $('status').textContent = txt; $('status').className = cls; }
+
+  function renderParticipantes() {
+    const ul = $('participantes');
+    ul.innerHTML = '';
+    if (!room || room.remoteParticipants.size === 0) {
+      ul.innerHTML = '<li class="off">nenhum</li>';
+      return;
+    }
+    room.remoteParticipants.forEach((p) => {
+      const li = document.createElement('li');
+      const tipo = p.kind === LK.ParticipantKind.SIP ? 'SIP' : (p.kind === LK.ParticipantKind.AGENT ? 'agente IA' : 'web');
+      const attrs = p.attributes && p.attributes['sip.phoneNumber'] ? ` · ${p.attributes['sip.phoneNumber']}` : '';
+      li.textContent = `${p.identity} (${tipo}${attrs})`;
+      ul.appendChild(li);
+    });
+  }
+
+  function setConectado(sim) {
+    $('btnConectar').disabled = sim;
+    $('btnMute').disabled = !sim;
+    $('btnSair').disabled = !sim;
+  }
+
+  $('btnConectar').onclick = async () => {
+    const url = $('url').value.trim();
+    const token = $('token').value.trim();
+    if (!token) { log('Informe o token.'); return; }
+
+    room = new LK.Room({ adaptiveStream: true, dynacast: true });
+
+    room
+      .on(LK.RoomEvent.ParticipantConnected, (p) => { log(`entrou: ${p.identity}`); renderParticipantes(); })
+      .on(LK.RoomEvent.ParticipantDisconnected, (p) => { log(`saiu: ${p.identity}`); renderParticipantes(); })
+      .on(LK.RoomEvent.TrackSubscribed, (track, pub, p) => {
+        if (track.kind === LK.Track.Kind.Audio) {
+          const el = track.attach();
+          el.dataset.participante = p.identity;
+          document.body.appendChild(el);
+          log(`ouvindo áudio de ${p.identity}`);
+        }
+      })
+      .on(LK.RoomEvent.TrackUnsubscribed, (track) => track.detach().forEach((el) => el.remove()))
+      .on(LK.RoomEvent.ConnectionStateChanged, (s) => log(`conexão: ${s}`))
+      .on(LK.RoomEvent.Disconnected, () => {
+        setStatus('desconectado', 'off'); setConectado(false); renderParticipantes();
+      });
+
+    try {
+      setStatus('conectando…', 'off');
+      await room.connect(url, token);
+      await room.localParticipant.setMicrophoneEnabled(true);
+      await room.startAudio();
+      setStatus(`conectado à sala "${room.name}"`, 'on');
+      setConectado(true);
+      renderParticipantes();
+      log('microfone publicado');
+    } catch (e) {
+      setStatus('erro', 'err');
+      log('ERRO: ' + (e && e.message ? e.message : e));
+      setConectado(false);
+    }
+  };
+
+  $('btnMute').onclick = async () => {
+    mutado = !mutado;
+    await room.localParticipant.setMicrophoneEnabled(!mutado);
+    $('btnMute').textContent = mutado ? 'Reativar microfone' : 'Mutar microfone';
+  };
+
+  $('btnSair').onclick = async () => { if (room) await room.disconnect(); };
+
+  '123456789*0#'.split('').forEach((d, i) => {
+    const b = document.createElement('button');
+    b.className = 'sec';
+    b.textContent = d;
+    b.onclick = async () => {
+      if (!room) return;
+      const code = d === '*' ? 10 : d === '#' ? 11 : parseInt(d, 10);
+      await room.localParticipant.publishDtmf(code, d);
+      log(`DTMF enviado: ${d}`);
+    };
+    $('dtmf').appendChild(b);
+  });
+</script>
+</body>
+</html>

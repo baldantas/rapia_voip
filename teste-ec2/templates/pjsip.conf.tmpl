@@ -1,0 +1,71 @@
+; Gerado por render.sh - edite o template.
+; Mesmo endpoint "provedor" do voip/livekit-local (registro com login/senha),
+; sem LiveKit e sem ramais.
+
+[global]
+type=global
+user_agent=RAPIA-SBC-TESTE-EC2
+endpoint_identifier_order=ip,username,anonymous
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+external_media_address=${PUBLIC_IP}
+external_signaling_address=${PUBLIC_IP}
+local_net=${VPC_CIDR}
+
+[provedor-auth]
+type=auth
+auth_type=userpass
+username=${SIP_AUTH_USERNAME}
+password=${SIP_PASSWORD}
+
+[provedor]
+type=registration
+transport=transport-udp
+outbound_auth=provedor-auth
+server_uri=sip:${SIP_PROVIDER_HOST}:${SIP_PROVIDER_PORT}
+client_uri=sip:${SIP_USERNAME}@${SIP_PROVIDER_HOST}
+contact_user=${SIP_USERNAME}
+expiration=${SIP_REG_EXPIRY}
+retry_interval=30
+forbidden_retry_interval=300
+fatal_retry_interval=120
+line=yes
+endpoint=provedor
+
+[provedor]
+type=aor
+contact=sip:${SIP_PROVIDER_HOST}:${SIP_PROVIDER_PORT}
+qualify_frequency=60
+
+[provedor]
+type=endpoint
+transport=transport-udp
+context=from-provedor
+aors=provedor
+outbound_auth=provedor-auth
+disallow=all
+allow=alaw,ulaw
+from_user=${SIP_USERNAME}
+from_domain=${SIP_PROVIDER_HOST}
+dtmf_mode=rfc4733
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+language=pt_BR
+
+[provedor]
+type=identify
+endpoint=provedor
+match=${SIP_PROVIDER_HOST}
+
+; Separado de propósito: se o DNS de SIP_PROVIDER_HOST falhar na subida, o
+; identify acima inteiro não carrega - este continua valendo (IP do relay do
+; provedor visto em todas as ligações de 24/09/2026).
+[provedor-ip]
+type=identify
+endpoint=provedor
+match=52.67.163.135

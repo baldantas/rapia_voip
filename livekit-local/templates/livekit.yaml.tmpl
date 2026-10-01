@@ -1,0 +1,28 @@
+# Gerado por scripts/render-config.ps1 - edite o template, não este arquivo.
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  # Mux: todo o WebRTC em uma única porta UDP (fácil de publicar no Docker Desktop)
+  udp_port: 7882
+  # Os clientes do LiveKit Server são locais (navegador, worker de IA, container SIP).
+  # Anuncia o IP da LAN e também o IP interno do container, que o SIP usa pela rede Docker.
+  use_external_ip: false
+  node_ip: ${LAN_IP}
+  advertise_internal_ip: true
+
+redis:
+  address: redis:6379
+  password: ${REDIS_PASSWORD}
+
+keys:
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+
+room:
+  empty_timeout: 60
+  departure_timeout: 20
+
+${WEBHOOK_BLOCK}
+
+logging:
+  level: ${LOG_LEVEL}

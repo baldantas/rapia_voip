@@ -1,0 +1,13 @@
+{
+  "dispatch_rule": {
+    "name": "URA - sala: fila direta (opção 2, sem IA)",
+    "trunk_ids": [
+      "__TRUNK_ID__"
+    ],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "fila-api"
+      }
+    }
+  }
+}

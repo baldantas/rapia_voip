@@ -1,0 +1,114 @@
+# =============================================================================
+# RAPIA - Stack LiveKit LOCAL (Windows + Docker Desktop / WSL2)
+#
+# O provedor só fornece CONTA SIP (login/senha). O LiveKit SIP não faz REGISTER,
+# então o Asterisk entra como SBC:
+#
+#   provedor  <--REGISTER/INVITE (login+senha)-->  asterisk  <--IP--> livekit-sip
+#
+# Somente o Asterisk é exposto à Internet (5060 + RTP). O LiveKit SIP e o
+# LiveKit Server ficam na rede interna do Docker, com IPs fixos.
+#
+# Antes de subir:  .\scripts\render-config.ps1 -GenKeys
+# Subir:           docker compose up -d
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  voz:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server /etc/redis.conf
+    restart: unless-stopped
+    networks:
+      voz:
+        ipv4_address: 172.30.0.13
+    volumes:
+      - ./config/redis.conf:/etc/redis.conf:ro
+      # sem isto, "docker compose down" apagaria os trunks e dispatch rules do LiveKit
+      - ./data/redis:/data
+    logging: *default-logging
+
+  livekit:
+    image: livekit/livekit-server:${LIVEKIT_VERSION:-latest}
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    networks:
+      voz:
+        ipv4_address: 172.30.0.12
+    # O webhook para o Laravel usa http://api.ipsys/..., nome que só existe no
+    # arquivo hosts do Windows. Dentro do container ele precisa apontar para a
+    # máquina hospedeira (Apache do WAMP), com o Host "api.ipsys" preservado, que
+    # é o que o middleware de subdomínio do Laravel lê.
+    extra_hosts:
+      - "api.ipsys:host-gateway"
+    ports:
+      - "7880:7880"          # API + WebSocket (ws://localhost:7880)
+      - "7881:7881"          # WebRTC sobre TCP (fallback)
+      - "7882:7882/udp"      # WebRTC UDP (mux em porta única)
+    volumes:
+      - ./config/livekit.yaml:/etc/livekit.yaml:ro
+    depends_on:
+      - redis
+    logging: *default-logging
+
+  # LiveKit SIP: sem portas publicadas. Só o Asterisk fala com ele.
+  sip:
+    image: livekit/sip:${SIP_VERSION:-latest}
+    restart: unless-stopped
+    networks:
+      voz:
+        ipv4_address: 172.30.0.11
+    volumes:
+      - ./config/sip.yaml:/sip/config.yaml:ro   # caminho fixo lido pela imagem
+    depends_on:
+      - redis
+      - livekit
+    logging: *default-logging
+
+  # Asterisk (SBC): registra na conta SIP do provedor e converte para IP
+  asterisk:
+    image: andrius/asterisk:${ASTERISK_VERSION:-latest}
+    restart: unless-stopped
+    # M2.5: URA consultando o RAPIA em tempo real (CURL do dialplan) precisa
+    # alcançar api.ipsys - mesmo mecanismo que o serviço livekit já usa e já
+    # está validado (webhook real chegando desde o M0).
+    extra_hosts:
+      - "api.ipsys:host-gateway"
+    networks:
+      voz:
+        ipv4_address: 172.30.0.10
+    ports:
+      # Portas publicadas iguais às internas: são anunciadas no SIP/SDP
+      - "${SIP_PORT:-5060}:5060/udp"
+      - "${SIP_PORT:-5060}:5060/tcp"
+      - "${AST_RTP_START:-20000}-${AST_RTP_END:-20099}:${AST_RTP_START:-20000}-${AST_RTP_END:-20099}/udp"
+      # AMI (M2.5): só em loopback, nunca 0.0.0.0 - diferente das portas SIP,
+      # não tem motivo pra existir na internet (é a interface de administração
+      # do Asterisk). O Laravel do WAMP conecta em 127.0.0.1:5038.
+      - "127.0.0.1:${AMI_PORT:-5038}:5038/tcp"
+    volumes:
+      - ./config/asterisk/pjsip.conf:/etc/asterisk/pjsip.conf:ro
+      - ./config/asterisk/pjsip_ramais.conf:/etc/asterisk/pjsip_ramais.conf:ro
+      - ./config/asterisk/extensions.conf:/etc/asterisk/extensions.conf:ro
+      - ./config/asterisk/rtp.conf:/etc/asterisk/rtp.conf:ro
+      - ./config/asterisk/logger.conf:/etc/asterisk/logger.conf:ro
+      - ./config/asterisk/modules.conf:/etc/asterisk/modules.conf:ro
+      - ./config/asterisk/manager.conf:/etc/asterisk/manager.conf:ro
+      # M2.5: prompts da URA (a imagem não traz core-sounds nenhum, nem en nem
+      # pt_BR - conferido em 23/09/2026, /var/lib/asterisk/sounds vem vazio)
+      - ./config/asterisk/sounds/custom:/var/lib/asterisk/sounds/custom:ro
+    depends_on:
+      - sip
+    logging: *default-logging

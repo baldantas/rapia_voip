@@ -1,0 +1,105 @@
+; Gerado por scripts/render-config.ps1 - edite o template, não este arquivo.
+; Asterisk como SBC: registra na conta SIP do provedor (login+senha) e
+; entrega/recebe chamadas do LiveKit SIP (172.30.0.11) por IP.
+
+[global]
+type=global
+user_agent=RAPIA-SBC
+endpoint_identifier_order=ip,username,anonymous
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+; IP público anunciado no Contact/Via e no SDP (estamos atrás de NAT)
+external_media_address=${PUBLIC_IP}
+external_signaling_address=${PUBLIC_IP}
+local_net=172.30.0.0/24
+local_net=${LAN_CIDR}
+
+; =============================================================================
+; PROVEDOR - conta SIP com usuário e senha
+; =============================================================================
+[provedor-auth]
+type=auth
+auth_type=userpass
+username=${SIP_AUTH_USERNAME}
+password=${SIP_PASSWORD}
+
+[provedor]
+type=registration
+transport=transport-udp
+outbound_auth=provedor-auth
+server_uri=sip:${SIP_PROVIDER_HOST}:${SIP_PROVIDER_PORT}
+client_uri=sip:${SIP_USERNAME}@${SIP_PROVIDER_HOST}
+contact_user=${SIP_USERNAME}
+expiration=${SIP_REG_EXPIRY}
+retry_interval=30
+forbidden_retry_interval=300
+fatal_retry_interval=120
+; "line" marca as chamadas que chegam por este registro, mesmo que o provedor
+; use um IP diferente do servidor de registro
+line=yes
+endpoint=provedor
+
+[provedor]
+type=aor
+contact=sip:${SIP_PROVIDER_HOST}:${SIP_PROVIDER_PORT}
+qualify_frequency=60
+
+[provedor]
+type=endpoint
+transport=transport-udp
+context=from-provedor
+aors=provedor
+outbound_auth=provedor-auth
+disallow=all
+allow=alaw,ulaw
+from_user=${SIP_USERNAME}
+from_domain=${SIP_PROVIDER_HOST}
+dtmf_mode=rfc4733
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+trust_id_outbound=yes
+send_rpid=yes
+language=pt_BR
+
+[provedor]
+type=identify
+endpoint=provedor
+match=${SIP_PROVIDER_HOST}
+
+; =============================================================================
+; LIVEKIT SIP - vizinho de confiança na rede docker, sem autenticação
+; =============================================================================
+[livekit]
+type=aor
+contact=sip:172.30.0.11:5060
+qualify_frequency=30
+
+[livekit]
+type=endpoint
+transport=transport-udp
+context=from-livekit
+aors=livekit
+disallow=all
+allow=alaw,ulaw
+dtmf_mode=rfc4733
+direct_media=no
+rtp_symmetric=yes
+trust_id_inbound=yes
+
+[livekit]
+type=identify
+endpoint=livekit
+match=172.30.0.11
+
+; =============================================================================
+; RAMAIS (M2.5) - endpoints SIP internos, gerados por scripts/render-ramais.ps1
+; a partir de ramais/ramais.json (decisão: template+reload, não Realtime PJSIP -
+; ver TODO seção 7, bloco M2.5). Ramal disca outro ramal -> contexto [ramais]
+; em extensions.conf -> Dial(PJSIP/{ramal-alvo}@livekit) -> sala pessoal.
+; =============================================================================
+#include pjsip_ramais.conf

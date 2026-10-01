@@ -1,0 +1,9 @@
+livekit-agents[google]~=1.8
+python-dotenv~=1.0
+# M1: chamadas HTTP ao RAPIA (runtime do agente, tools, transcrição). Já vinha
+# instalado como dependência transitiva do próprio livekit-agents; explicitado
+# aqui porque agent.py passa a importá-lo diretamente.
+aiohttp~=3.14
+# M4.4: métricas de sinal (qualidade.py). Também já vinha como dependência
+# transitiva; explicitado porque o worker passa a importá-lo diretamente.
+numpy>=2.0

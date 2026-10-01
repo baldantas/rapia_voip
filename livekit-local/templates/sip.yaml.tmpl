@@ -1,0 +1,20 @@
+# Gerado por scripts/render-config.ps1 - edite o template, não este arquivo.
+api_key: ${LIVEKIT_API_KEY}
+api_secret: ${LIVEKIT_API_SECRET}
+ws_url: ws://livekit:7880
+
+redis:
+  address: redis:6379
+  password: ${REDIS_PASSWORD}
+
+sip_port: 5060
+rtp_port: ${SIP_RTP_START}-${SIP_RTP_END}
+
+# Quem fala com a Internet é o Asterisk (172.30.0.10). Aqui o tráfego SIP/RTP
+# é todo interno à rede docker, então usa-se o IP do próprio container.
+use_external_ip: false
+
+max_active_calls: ${SIP_MAX_ACTIVE_CALLS}
+
+logging:
+  level: ${LOG_LEVEL}

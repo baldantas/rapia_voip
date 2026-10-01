@@ -1,0 +1,8 @@
+{
+  "sip_trunk_id": "ST_substitua_pelo_id_do_outbound_trunk",
+  "sip_call_to": "+5511999999999",
+  "room_name": "teste-sip",
+  "participant_identity": "paciente-teste",
+  "participant_name": "Paciente teste",
+  "wait_until_answered": true
+}

@@ -1,0 +1,4 @@
+.env
+.venv/
+coletas.jsonl
+__pycache__/

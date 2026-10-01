@@ -1,0 +1,19 @@
+{
+  "dispatch_rule": {
+    "name": "Central -> agente de IA (sala por chamada)",
+    "trunk_ids": ["ST_substitua_pelo_id_do_inbound_trunk"],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "call-"
+      }
+    },
+    "room_config": {
+      "agents": [
+        {
+          "agent_name": "rapia-voice",
+          "metadata": "{\"tenant\":\"local\",\"agent_id\":1}"
+        }
+      ]
+    }
+  }
+}

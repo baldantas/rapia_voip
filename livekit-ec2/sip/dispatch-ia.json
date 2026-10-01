@@ -1,0 +1,21 @@
+{
+  "dispatch_rule": {
+    "name": "Agente de IA - uma sala por chamada",
+    "trunk_ids": [
+      "__TRUNK_ID__"
+    ],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "call-api"
+      }
+    },
+    "room_config": {
+      "agents": [
+        {
+          "agent_name": "rapia-voice",
+          "metadata": "{\"agent_id\": 1}"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,33 @@
+; Gerado por render.sh - edite o template.
+; Teste diagnóstico: o Asterisk atende e toca áudio SOZINHO (o cenário que
+; fica mudo no ambiente local). Sem LiveKit, sem API.
+;
+;   1. atende, toca o prompt da URA (17s)        -> você deve OUVIR a voz
+;   2. espera um dígito por 10s
+;      - apertou qualquer dígito: o prompt recomeça -> prova que o DTMF CHEGOU
+;   3. eco: tudo que você falar volta pra você  -> prova áudio nos DOIS sentidos
+[general]
+static=yes
+writeprotect=no
+
+[from-provedor]
+exten => _[0-9+].,1,NoOp(TESTE-EC2 entrada de ${CALLERID(num)} para ${EXTEN})
+ same => n,Answer()
+ same => n,Wait(1)
+ same => n,Set(TIMEOUT(digit)=4)
+ same => n,Set(TIMEOUT(response)=10)
+ same => n,Background(custom/ura-boas-vindas)
+ same => n,WaitExten()
+
+exten => _X,1,NoOp(TESTE-EC2 DTMF recebido: ${EXTEN} - repetindo o prompt)
+ same => n,Playback(custom/ura-boas-vindas)
+ same => n,Goto(eco,1)
+
+exten => t,1,NoOp(TESTE-EC2 sem dígito - indo para o eco)
+ same => n,Goto(eco,1)
+
+exten => i,1,Goto(eco,1)
+
+exten => eco,1,NoOp(TESTE-EC2 eco: fale e ouça sua própria voz)
+ same => n,Echo()
+ same => n,Hangup()
