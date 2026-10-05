@@ -73,3 +73,75 @@ Base: seções 1 e 11 do `TODO-RAPIA-VOICE-V1.md`. Ambiente de homologação: st
 
 A sequência da parte B roda **três vezes seguidas** sem intervenção, e o **vídeo de backup** é gravado numa
 dessas execuções (tela do Painel + áudio da ligação).
+
+## F. Vídeo de backup e vídeo de divulgação (guia de produção)
+
+Dois usos, o mesmo material gravado: (1) **backup** da apresentação (plano B se a ligação falhar ao vivo) e
+(2) **divulgação** enviada antes aos clientes que já usam o chat do Rapia, para despertar o interesse na demonstração.
+Grave **uma vez**, com qualidade, e monte as duas versões a partir das mesmas tomadas.
+
+### F.1 Preparo antes de gravar
+1. Checklist da parte A (ngrok, `php -S`, fila, sysweb, worker, EC2 com o Asterisk "Registered").
+2. Worker **sem** `VOICE_MAX_CALL_SECONDS_FORCAR` e sem variável de teste ligada no `voice-agent\.env`.
+3. Recriar a massa de demonstração, para o Dashboard e o Histórico estarem cheios e as chamadas "de hoje" serem de hoje:
+   `php voip\scripts\massa-demo.php --remover` e depois `--criar`.
+4. Usar só o **número de teste** e dados fictícios (paciente do ERP Demo). Nunca dados reais de paciente no vídeo.
+5. Conferir que o agente publicado é o de demonstração (prompt, voz Leda) e que você está **Disponível** no Painel 360.
+6. Navegador em janela limpa: perfil sem extensões visíveis ou modo anônimo, sem favoritos, notificações do sistema
+   desligadas (Windows: Assistente de foco), **janela em 1920x1080** e zoom de 100% (ou 110% para o texto ficar legível).
+7. Fazer cada cena **3 vezes** e escolher a melhor tomada; gravar também "tomadas de cobertura" (planos curtos para cobrir cortes).
+
+### F.2 Captura: ferramentas gratuitas e configuração
+O OBS Studio é gratuito e é a ferramenta recomendada: a má qualidade vem quase sempre de configuração. Descartar o CamStudio.
+
+| Ajuste do OBS | Valor |
+|---|---|
+| Configurações > Vídeo | Resolução base e de saída 1920x1080, 30 fps |
+| Configurações > Saída (modo Avançado) > Gravação | Formato **MKV** (não perde o arquivo se travar; depois Arquivo > Remux para MP4) |
+| Codificador | NVENC (Nvidia) ou AMF (AMD) se houver placa dedicada; senão x264 |
+| Controle de taxa | CBR, 20.000 a 30.000 kbps |
+| Fonte de vídeo | "Captura de Janela" do navegador (ou "Captura de Tela" de um monitor); evitar capturar monitor com resolução diferente da saída |
+| Áudio do desktop | Desligado nas tomadas de tela (o som da ligação vem de outra fonte, abaixo) |
+
+Outras fontes de captura, todas gratuitas:
+- **Tela do celular do paciente:** gravador de tela nativo do Android/iPhone (modo "Não perturbe" ligado), na cena do "mockup".
+- **Áudio da ligação (paciente e IA):** a gravação que o próprio sistema já faz (player na ficha encerrada) é a fonte mais limpa;
+  alternativa: gravar o celular em viva-voz com o gravador de voz de outro aparelho, em ambiente silencioso.
+- **Narração:** gravada à parte, depois, sobre o vídeo (Audacity, gratuito, ou o gravador do próprio editor), com microfone de
+  headset, sala silenciosa, tomadas curtas por trecho. Alternativa: voz sintetizada (Gemini TTS, o mesmo do projeto).
+- **Realce do cursor:** o OBS não destaca cliques; usar o realce do próprio editor na pós-produção ou a ferramenta
+  PowerToys > Mouse Utilities (gratuito) para destacar o cursor.
+Cuidados: mouse devagar e com pouco movimento; clicar e esperar um segundo; não rolar a tela rápido; fechar o que não aparece no vídeo.
+
+### F.3 Edição (gratuita)
+- **DaVinci Resolve (gratuito)**: cortes, tela dividida, zoom, legendas e exportação em alta qualidade. Recomendado.
+- **CapCut (desktop)**: mais simples de aprender, com legendas automáticas.
+- Música: trilha instrumental livre da biblioteca de áudio do YouTube Studio, volume baixo (a voz sempre acima).
+- Exportar em MP4 H.264, 1920x1080, 30 fps, 12 a 16 Mbps. Para WhatsApp/e-mail, gerar também uma versão de ~720p abaixo de 25 MB.
+
+### F.4 Roteiro de cenas: versão divulgação (90 a 120 s)
+
+| # | Tempo | Montagem da cena | O que mostrar | Texto na tela / narração |
+|---|---|---|---|---|
+| 1 | 0–8 s | **Só o mockup do celular do paciente** discando para a clínica | Tela de chamada, fundo neutro | "Quantas ligações sua clínica perde por dia?" |
+| 2 | 8–20 s | **Celular em destaque**, ondas de voz | A IA cumprimenta e pede o nome; (opcional) o card "Na URA" | "Atendimento 24 horas, sem fila de espera." |
+| 3 | 20–40 s | **Tela dividida:** celular à esquerda, Painel 360 à direita | Transcrição ao vivo e dados aparecendo na ficha (nome, CPF, nascimento) | "Tudo registrado em tempo real." |
+| 4 | 40–55 s | **Tela cheia do Painel 360** | Consulta ao ERP Demo (paciente e agenda) respondida pela IA | "Consulta de agenda e exames sem atendente." |
+| 5 | 55–70 s | **Tela dividida:** celular e Painel | O paciente pede um humano; o card vai para "Em fila" | "Quando precisa de gente, passa para a pessoa certa." |
+| 6 | 70–85 s | **Tela cheia, atendente assume** (softphone) | Clique em Assumir, a IA sai, a atendente fala já com a ficha pronta | "A atendente já sabe tudo. O paciente não repete nada." |
+| 7 | 85–100 s | **Ficha encerrada** | Resumo automático, tags, player da gravação com a transcrição sincronizada | "Resumo, gravação e histórico, automáticos." |
+| 8 | 100–112 s | **Gestão** | Dashboard (chamadas, tempo de espera, custo por ligação) e o Estúdio do Agente (prompt) | "Você controla o que a IA fala." |
+| 9 | 112–120 s | **Fecho** | Logo, contato e a chamada para ação | "Agende uma demonstração." |
+
+### F.5 Versão backup da apresentação
+- Uma **tomada contínua e limpa** da sequência da parte B (cenas 2 a 8 acima), sem música e **sem acelerar**, com os tempos reais.
+- Grave dentro do ensaio (seção E), na 3ª execução seguida, para provar que o fluxo roda sem intervenção.
+- Guardar o arquivo no desktop da apresentação e em uma cópia no celular/pen drive; testar a reprodução offline.
+
+### F.6 Cuidados e lista de verificação final
+- Sem dado pessoal real (nome, CPF, telefone, gravação de paciente) visível ou audível; conferir a ficha e o Histórico quadro a quadro.
+- Aviso de gravação falado pela IA deve aparecer no vídeo (mostra conformidade com a LGPD).
+- Não mostrar chaves, tokens, URLs internas do ngrok/EC2 nem o console do worker.
+- Legendas em português em todo o vídeo (muita gente assiste sem som).
+- Revisar o áudio da IA: se o telefone distorcer, usar a gravação do sistema.
+- Chamada para ação com um único canal de contato.

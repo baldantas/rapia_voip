@@ -378,7 +378,11 @@ o time.
 - [ ] **Adapter do ERP real** do cliente-alvo (paciente e agenda) — **pendente**:
       cliente-alvo/ERP ainda não confirmado (mesma pendência da seção 10).
       Tools que não dependem de ERP (triagem, transferência) não foram afetadas.
-- [ ] Modo de contingência do adapter — depende do item acima
+      **DECISÃO (05/10/2026): item CANCELADO no Voice.** Não haverá adapter de ERP só do VOIP. A comunicação com Klingo/Smart é
+      feita uma vez, no Flow Studio/`sysflow` (conectores), e consumida por fluxos, pela IA de voz, pelo painel do atendente
+      (Assistant do /chat e ficha do /voice/painel) e por formulários de agendamento. Blocos E0–E5, ordem e decisões em
+      `ALINHAMENTO-VOIP-FLOW-STUDIO.md` (raiz). O ERP Demo continua como servidor de demonstração, por trás de um conector.
+- [ ] Modo de contingência do adapter — **cancelado**: o circuito/contingência é dos conectores do `sysflow` (ver alinhamento)
 - [x] Triagem gravada, contato criado/vinculado. Eventos ficam em
       `voice_call_events` (não há broadcast Pusher específico do M1 — o
       `VoiceCallUpdated` do M0 já cobre mudança de status; um evento dedicado a
@@ -2071,6 +2075,88 @@ A1 = correção no código (não trocar o PHP do Apache nem `config:cache`); A3 
       a chave do Gemini (AI Studio) é do responsável. Ver a resposta da sessão para as opções.
 - [ ] **C. Provas do responsável**: ligações do experimento A2; ligação de fila (IA calada até assumir e sai ao assumir);
       "Na URA" e desligar no menu com telefone; ensaio 3x e vídeo de backup (`ROTEIRO-APRESENTACAO.md`, atualizado).
+- **Provas do responsável (05/10/2026, chamadas 133–139):**
+  - A2: 133 (controle) com "cárie balão dentes" e erro `generate_reply timed out waiting for generation_created` (saudação
+    ~20 s depois do `ai_session`, latência do Gemini no 1º turno; o timeout de 5 s é fixo no plugin); 134 e 135 (pt-BR, depois
+    pt-BR + vocabulário) sem `comprehension_miss`; 136 (variáveis ativas) ainda teve um "¿Qué?" (`espanhol`). Amostra pequena,
+    tendência favorável: variáveis mantidas no `.env`; sem `VOICE_TRANSCRICAO_IDIOMAS` o worker agora usa o `language` do agente (Estúdio).
+  - Fila (136): IA calou e saiu ao assumir (ok). **Achado de produto**: pediu os dados antes de transferir porque a versão 1 publicada
+    tem o prompt de teste ("coletar 3 dados e depois transferir"): a regra é do prompt do agente (Estúdio), não do código.
+  - "Na URA" (137, 138): ok (card sumiu ao desligar, sem duplicar, áudio do menu imediato).
+  - Limite (139, `FORCAR=20`): transferiu, mas **o paciente ficou no mudo**: `_estado` silenciava no primeiro `listening` depois de
+    `transferida=True` e a frase do limite se perdia (aviso e fala final não aparecem na transcrição). Corrigido no worker
+    (`agent.py`): frases com `allow_interruptions=False`, `interrupt()` antes, nova tentativa se interrompida, texto "o tempo do
+    autoatendimento terminou, você será direcionado a um atendente" e só silencia **depois** da fala. **Não reprovado em ligação.**
+    O tempo máximo por agente já existe no Estúdio (Configurações da sessão > "Tempo máx. (s)", mín. 30 s, vale após publicar);
+    `VOICE_MAX_CALL_SECONDS_FORCAR` só sobrepõe para teste.
+  - Painel 360: cabeçalho da ficha (selo "Encerrada" + Fechar) agora é `sticky` no scroll da coluna central (`V_FichaChamada.vue`).
+  - **Chamada 141/143 (limite de tempo, 05/10/2026):** 141 repetiu a mensagem 3-4x (o aviso prometia a transferência e o modelo
+    chamou `transferir_para_atendente` por conta própria); **143: IA muda perto do limite e, no encerramento, LEU TRECHOS DO PRÓPRIO
+    PROMPT em voz alta** (inaceitável). Causa: no Gemini Live `generate_reply(instructions=...)` envia o texto como turno de modelo +
+    "." de usuário; no meio da conversa o modelo ignora (mudo) ou recita o prompt. Correção no worker: o aviso e as despedidas do limite
+    agora são **frases fixas pré-sintetizadas** (`frases_fixas.py`, sessão Live separada só de leitura, voz do agente, cache em
+    `cache_frases/`) tocadas com `session.say(audio=...)`, **sem LLM no caminho**; sem áudio pronto o worker não fala (prefere o
+    silêncio a pedir ao modelo); e `REGRA_SIGILO` é anexada a todo prompt. Síntese das 3 frases testada (voz Leda, 6-11 s cada);
+    **ligação real ainda não provada** (reiniciar o worker). Defesa que NÃO existe e fica como risco aberto: detector de vazamento de
+    prompt na fala da IA em conversas normais (interromper se a transcrição repetir trechos do prompt).
+  - **Chamada 144 (limite 30 s, frases fixas):** as frases já eram as gravadas, mas (1) o aviso caiu no meio do nome do paciente
+    (interrompeu a escuta; o nome saiu "Parque Barigui") e (2) a despedida foi **cortada em "O tempo do"** e a ligação caiu:
+    `session.say(audio=...)` não é blindado (com detecção de turno no servidor o `allow_interruptions=False` é ignorado) e o código
+    seguia para `delete_room` mesmo com a fala interrompida; o resultado foi `sem_atendente` (nenhum SUPER com `voice_status=1` naquele
+    instante), caminho que desliga por desenho. Correções (`agent.py`): `_espera_vaga` (só toca com o paciente calado e a IA sem falar,
+    até 12 s para o aviso e 3 s para as frases finais); `_fala_fixa` toca **direto na saída de áudio** da sessão
+    (`session.output.audio.capture_frame/flush/wait_for_playout`), com a IA calada (interrupt + entrada de áudio desligada) enquanto
+    toca e reabrindo a entrada depois (no aviso); despedida só desliga 1,5 s depois do fim do áudio; no caminho sem atendente agora
+    **agenda o retorno de verdade** (`agendar_callback`), já que a frase promete retorno. **Não provado em ligação** (reiniciar o worker).
+  - **Chamadas 145 (com atendente) e 146 (sem atendente), limite 30 s:** frases fixas tocaram inteiras; transferência/despedida e retorno
+    agendado (callback 34) corretos. **Defeito restante:** depois do AVISO (antes do limite) a IA pedia de novo o que o paciente já
+    dissera ("Eu falei meu nome"): o aviso corta a vez da IA e ela perde o fio. Decisão: **aviso desligado por padrão**
+    (`VOICE_LIMITE_AVISO_S=0`; >0 reativa para experimento); a frase de transferência/despedida no limite continua sempre falada.
+    Presença: o foco/minimizar do navegador não altera o status; só entrar (Disponível), sair do Painel e `pagehide` (Indisponível).
+    Risco conhecido: sem heartbeat/TTL, aba congelada ou navegador encerrado à força deixa o status Disponível.
+- [x] **Heartbeat de presença do atendente (aprovado e implementado em 05/10/2026, TTL 150 s; commitado: sysapi e sysweb, ver git log)** — texto da proposta abaixo; implementação: sysapi `VoicePresenceService`, `POST /voice/presence/ping`, `presence` apaga/renova o sinal, `usuariosVoz()` exige sinal vivo, `liberaOfertasSemSinal()`, `config voice.presenca.ttl` (`VOICE_PRESENCA_TTL`, 0 desliga); sysweb `Painel360.vue` (ping a cada 20 s por Web Worker, ao voltar o foco, aviso "Sem conexão" após 3 falhas, equipe no cabeçalho com selo vermelho SEM SINAL) e `painel360.js` (`pingPresenca`). Provado no serviço com Redis e banco reais (sem sinal -> sem_atendente; ping -> disponível; expira após o TTL; TTL 0 desliga; Indisponível apaga o sinal). **Falta provar no navegador e com fechamento forçado da aba.** Tela do supervisor = a equipe no cabeçalho do Painel 360 (todo SUPER ativo, estado efetivo). Proposta original: `users.voice_status` é só a
+      preferência (1/2); a disponibilidade EFETIVA passa a exigir também um sinal recente da aba do Painel 360.
+      (1) Front: `Painel360` envia `POST /voice/presence/ping` a cada 20 s enquanto montado (ping imediato ao abrir e ao voltar a
+      foco); falha seguida de 3 pings mostra "Sem conexão com o servidor" no cabeçalho; ping que volta com `expired:true` reafirma a
+      preferência. (2) Sysapi: chave Redis `voice:presenca:{tenant}:{user}` com TTL `VOICE_PRESENCA_TTL` (padrão 150 s; sem migration);
+      `usuariosVoz()` (base de `haAtendenteDisponivel`/`atendentesDisponiveis`) filtra `voice_status=1` E chave viva; `ofereceProximo`
+      devolve a oferta de quem perdeu o sinal; ping de quem está em `voice_status=2` não reabilita. TTL 0 = recurso desligado (compatibilidade
+      até o front novo subir em todos os tenants). (3) Cuidado de navegador: aba oculta por mais de 5 min tem timers limitados a ~1/min
+      (Chrome) e abas podem ser congeladas; por isso o TTL é 150 s e o ping sai de um Web Worker. Pusher/Ably não serve como fonte de
+      presença (o `laravel-websockets` está desativado). (4) Provas: ping vivo -> transferência aceita; fechar a aba à força
+      (Gerenciador de Tarefas) -> em até 150 s a transferência vira `sem_atendente`; aba em segundo plano 10 min continua válida.
+      Estimativa 0,5 a 1 dia. Decisões do responsável: TTL, e se "sem sinal" aparece como estado visível para o supervisor.
+  - **Chamadas 147 (com atendente) e 148 (sem), 05/10/2026, celular em viva-voz:** a IA repetia o início do prompt (saudação) várias vezes
+    até a ligação ser transferida (147) ou até o paciente sair do viva-voz (148). Causa provável: `START_SENSITIVITY=HIGH` + ruído da sala/eco
+    do viva-voz disparam turnos; como a instrução da saudação continua sendo o último turno do modelo, cada "turno" de ruído a repete.
+    Medição (ai_session -> 1ª fala da IA, calls 133-148): 3 a 20 s (mediana ~10 s), a maior parte é a geração da saudação no Gemini
+    (timeout fixo de 5 s do plugin). Mudanças (`agent.py`, `.env`): (1) `VOICE_START_SENSITIVITY=LOW` (antes HIGH); (2) **saudação
+    protegida**: entrada de áudio desligada enquanto a saudação toca (reabre no fim, máx. 45 s); (3) **"Aguarde um instante, por favor"**
+    pré-sintetizado (`frases_fixas.py`, cache) tocado direto na saída de áudio se a IA não começar a falar em 1,5 s
+    (`VOICE_ESPERA_FALADA_S`; 0 toca já, negativo desliga), parando assim que a IA começa; evento `ai_espera_falada`.
+    Provas sem telefone com um worker de teste à parte (`AGENT_NAME=rapia-voice-claude` + `CHAMADA_TESTE_AGENT_NAME`): saudação normal
+    (3 falas) em 2 chamadas; filler forçado (`VOICE_ESPERA_FALADA_S=0`) tocou 29 quadros e a IA falou em seguida (log benigno
+    "capture_frame called while flush is in progress" na troca). **Não provado em ligação real/viva-voz.** Limite do filler: ele só cobre a
+    espera DEPOIS que o agente entrou na sala; o tempo até o agente entrar (webhook/despacho) não é coberto.
+  - **Chamada 152 (05/10/2026):** resultado "muito bom" (sem repetição da saudação; em viva-voz foi preciso falar mais alto com
+    `START_SENSITIVITY=LOW`: é o preço do ajuste, reavaliar com aparelho real fora do viva-voz).
+  - **Música de espera (pedido do responsável, 05/10/2026):** paciente na fila com a IA calada ouve instrumental até a atendente assumir.
+    `musica_espera.py`: faixa de `voice-agent/audio/espera.wav` (WAV PCM 16 bits, sua, com direito de uso) ou, sem ela, uma faixa GERADA
+    (pad suave Am-F-C-G, 24 s, sem direitos autorais; salva em `audio/espera_gerada.wav`), em laço, baixa (`VOICE_MUSICA_ESPERA_GANHO`,
+    padrão 0,2; `VOICE_MUSICA_ESPERA=0` desliga), tocada direto na saída de áudio da sessão como as frases fixas; começa quando o agente
+    fica mudo (transferência aceita, pela IA ou pelo limite de tempo) e para quando a atendente entra (o job acaba). Evento `ai_musica_espera`.
+    Provado sem telefone (worker de teste à parte + `chamada_teste.py`): música iniciou na fila e a chamada correu sem erros; **o som em si
+    não foi ouvido por mim** (conferir o volume e o gosto em ligação real). A gravação (egress) inclui a música. Fora do escopo: música
+    antes do agente entrar na sala e retornos/saída.
+  - **Atenção:** `voice-agent/.env` está com `VOICE_MAX_CALL_SECONDS_FORCAR=30` (teste do limite): comentar antes de uso normal.
+  - **Chamada 154 (05/10/2026):** música/espera ok; defeito: o "Aguarde um instante" ainda tocava quando a voz do Gemini começou e
+    as duas se sobrepunham. Causa: o filler escrevia na saída de áudio até ~1 s à frente do relógio e só parava quando
+    `agent_state` virava "speaking" (que só muda quando o áudio do modelo TOCA, depois do que já estava na fila), então os quadros dos
+    dois eram intercalados. Correção: `_vigia_audio_do_modelo` envolve `capture_frame` da saída da sessão e marca o instante em que o
+    MODELO escreve o 1º quadro (contextvar `_audio_nosso` separa o que é nosso); o filler escreve no ritmo do relógio (no máx. ~0,15 s à
+    frente), PARA nesse instante e não faz flush. Prova sem telefone (worker de teste, `VOICE_ESPERA_FALADA_S=0`, 4 chamadas): as 4
+    foram cortadas pelo modelo com 14 a 17 quadros e sem o erro de flush; evento `ai_espera_falada.cortada_pelo_modelo`. **Resíduo
+    possível:** até ~0,15 s do filler antes da voz da IA (sequencial, não sobreposto). Reprovar em ligação real.
 - Ambiente: neste dia o PC estava sem ngrok, `php -S`, fila e sysweb; sem ngrok o LiveKit não entrega webhook e a ligação
   não vira `voice_calls` (o teste "sumia"). Conferir o item 4 do checklist antes de qualquer teste.
 

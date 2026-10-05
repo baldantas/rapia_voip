@@ -103,7 +103,7 @@ async def executa(args) -> int:
     audios = await asyncio.to_thread(ps.sintetiza, {k: ps.FALAS[k] for k in set(roteiro)}, Path(tempfile.gettempdir()) / "chamada_teste" / "tts")
 
     twirp("RoomService", "CreateRoom", {"name": sala, "empty_timeout": 30, "departure_timeout": 5}, sala)
-    twirp("AgentDispatchService", "CreateDispatch", {"room": sala, "agent_name": ENV.get("AGENT_NAME", "rapia-voice"),
+    twirp("AgentDispatchService", "CreateDispatch", {"room": sala, "agent_name": __import__("os").environ.get("CHAMADA_TESTE_AGENT_NAME") or ENV.get("AGENT_NAME", "rapia-voice"),
                                                      "metadata": json.dumps({"agent_id": args.agent_id})}, sala)
 
     sessao = ps.Sessao()
